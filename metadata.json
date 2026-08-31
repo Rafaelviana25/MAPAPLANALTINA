@@ -1,0 +1,6 @@
+{
+  "name": "MAPA PLANALTINA-GO",
+  "description": "Visualizador interativo do mapa de Planaltina-GO com suporte a zoom infinito, pan livre e rotação.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
