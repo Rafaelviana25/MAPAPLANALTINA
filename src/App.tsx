@@ -202,6 +202,15 @@ export default function App() {
       };
 
       const start = touchStartRef.current;
+      if (!containerRef.current || !start) return;
+
+      const rect = containerRef.current.getBoundingClientRect();
+      
+      const startCenterX = start.center.x - rect.left - rect.width / 2;
+      const startCenterY = start.center.y - rect.top - rect.height / 2;
+      
+      const currentCenterX = currentCenter.x - rect.left - rect.width / 2;
+      const currentCenterY = currentCenter.y - rect.top - rect.height / 2;
       
       // Calculate Pinch Zoom
       const scaleFactor = start.distance > 0 ? (currentDist / start.distance) : 1;
@@ -215,11 +224,16 @@ export default function App() {
       const dx = currentCenter.x - start.center.x;
       const dy = currentCenter.y - start.center.y;
 
+      // Dynamic Zoom Centering focal-point Math
+      const scaleRatio = newScale / start.scale;
+      const newTranslateX = currentCenterX - (startCenterX - start.translateX) * scaleRatio;
+      const newTranslateY = currentCenterY - (startCenterY - start.translateY) * scaleRatio;
+
       setTransform({
         scale: newScale,
         rotation: newRotation,
-        translateX: start.translateX + dx,
-        translateY: start.translateY + dy,
+        translateX: newTranslateX,
+        translateY: newTranslateY,
         flipH: transform.flipH,
         flipV: transform.flipV
       });
@@ -279,175 +293,160 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-[#f9fafb] text-neutral-900 flex flex-col font-sans select-none" id="app-root">
+    <div className="w-screen h-screen h-[100dvh] relative overflow-hidden bg-neutral-900 text-neutral-900 font-sans select-none flex flex-col" id="app-root">
       
-      {/* HEADER BAR */}
-      <header className="border-b border-neutral-200/80 bg-white/90 backdrop-blur-md sticky top-0 z-30 px-6 py-3.5 flex justify-between items-center" id="app-header">
-        <div className="flex items-center gap-3" id="brand-group">
-          <div className="w-9 h-9 bg-neutral-900 rounded-xl flex items-center justify-center text-white" id="brand-logo">
-            <Compass size={18} className="animate-spin-slow text-neutral-100" />
+      {/* FLOATING HEADER BAR */}
+      <header className="absolute top-4 left-4 z-30 bg-white/95 backdrop-blur-md border border-neutral-200/80 shadow-lg rounded-2xl px-4 py-2.5 flex items-center gap-3 pointer-events-auto" id="app-header">
+        <div className="flex items-center gap-3.5" id="brand-group">
+          <div className="w-8 h-8 bg-neutral-950 rounded-xl flex items-center justify-center text-white" id="brand-logo">
+            <Compass size={16} className="animate-spin-slow text-neutral-100" />
           </div>
           <div>
-            <h1 className="text-lg font-bold tracking-tight text-neutral-950 flex items-center gap-2 uppercase" id="brand-title">
+            <h1 className="text-sm font-bold tracking-tight text-neutral-950 uppercase" id="brand-title">
               {t.title}
             </h1>
           </div>
         </div>
       </header>
 
-      {/* WORKSPACE VIEWPORT */}
-      <main className="flex-1 max-w-4xl w-full mx-auto p-4 sm:p-6 lg:p-8 flex flex-col gap-6" id="app-main-layout">
+      {/* FLOATING ZOOM PERCENT INDICATOR (TOP-RIGHT) */}
+      <div className="absolute top-4 right-4 z-30 bg-white/95 backdrop-blur-md border border-neutral-200/80 shadow-lg rounded-2xl px-3 py-2 flex items-center gap-2 text-xs font-mono font-bold text-neutral-700 pointer-events-none" id="zoom-indicator">
+        <ZoomIn size={14} className="text-neutral-500" />
+        <span>{Math.round(transform.scale * 100)}%</span>
+      </div>
+
+      {/* FULL SCREEN CANVAS CONTAINER */}
+      <div
+        ref={containerRef}
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+        onMouseLeave={handleMouseUp}
+        onWheel={handleWheel}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+        onTouchCancel={handleTouchEnd}
+        onDoubleClick={handleDoubleClick}
+        className="absolute inset-0 w-full h-full bg-neutral-950 select-none cursor-grab active:cursor-grabbing flex items-center justify-center touch-none overflow-hidden z-0"
+        id="canvas-gesture-viewport"
+      >
+        {/* Checkerboard Pattern for Image Transparency */}
+        <div 
+          className="absolute inset-0 pointer-events-none opacity-[0.2]"
+          style={{
+            backgroundImage: `linear-gradient(45deg, #e2e8f0 25%, transparent 25%),
+                              linear-gradient(-45deg, #e2e8f0 25%, transparent 25%),
+                              linear-gradient(45deg, transparent 75%, #e2e8f0 75%),
+                              linear-gradient(-45deg, transparent 75%, #e2e8f0 75%)`,
+            backgroundSize: "24px 24px",
+            backgroundPosition: "0 0, 0 12px, 12px -12px, -12px 0px"
+          }}
+          id="viewport-checkered-bg"
+        ></div>
+
+        {/* Stage Grid overlay - very subtle accent */}
+        <div className="absolute inset-0 pointer-events-none opacity-[0.03] border border-neutral-900" style={{ backgroundImage: "radial-gradient(#000 1px, transparent 1px)", backgroundSize: "16px 16px" }} id="stage-dot-grid"></div>
+
+        {/* IMAGE RENDER PIXEL STAGE */}
+        <div 
+          className="relative w-full h-full max-w-[95%] max-h-[95%] flex items-center justify-center transition-transform duration-75"
+          id="interactive-image-pivot"
+          style={{
+            transform: `translate(${transform.translateX}px, ${transform.translateY}px) scale(${transform.scale}) rotate(${transform.rotation}deg)`,
+            transformOrigin: "center center"
+          }}
+        >
+          <img
+            src={imageSrc}
+            alt="Viewer core native graphic"
+            referrerPolicy="no-referrer"
+            className="max-w-full max-h-full w-auto h-auto object-contain select-none pointer-events-none drop-shadow-2xl"
+            style={{
+              transform: `scaleX(${transform.flipH ? -1 : 1}) scaleY(${transform.flipV ? -1 : 1})`,
+              imageRendering: "crisp-edges"
+            }}
+            id="primary-canvas-image"
+          />
+        </div>
+      </div>
+
+      {/* FLOATING ACTION TOOLBAR AT THE BOTTOM CENTER */}
+      <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-30 w-[calc(100%-2rem)] max-w-lg bg-white/95 backdrop-blur-md border border-neutral-200/80 p-2.5 rounded-2xl flex items-center justify-between gap-2 shadow-xl pointer-events-auto" id="actions-panel-toolbar">
         
-        {/* VIEWPORT PANEL - HERO AREA */}
-        <div className="flex-1 flex flex-col gap-4 min-w-0" id="viewer-viewport-panel">
-
-          {/* DYNAMIC CANVAS CONTAINER */}
-          <div
-            ref={containerRef}
-            onMouseDown={handleMouseDown}
-            onMouseMove={handleMouseMove}
-            onMouseUp={handleMouseUp}
-            onMouseLeave={handleMouseUp}
-            onWheel={handleWheel}
-            onTouchStart={handleTouchStart}
-            onTouchMove={handleTouchMove}
-            onTouchEnd={handleTouchEnd}
-            onTouchCancel={handleTouchEnd}
-            onDoubleClick={handleDoubleClick}
-            className="flex-1 min-h-[450px] md:min-h-[550px] relative rounded-3xl overflow-hidden border-[1.5px] border-neutral-300 bg-white transition-all duration-300 select-none cursor-grab active:cursor-grabbing flex items-center justify-center shadow-sm touch-none"
-            id="canvas-gesture-viewport"
+        {/* FINE-TUNING BUTTON GROUP */}
+        <div className="flex items-center gap-1.5 overflow-x-auto" id="fine-tune-buttons">
+          <button
+            onClick={handleZoomIn}
+            className="w-10 h-10 bg-white hover:bg-neutral-50 border border-neutral-200 hover:border-neutral-900 rounded-xl flex items-center justify-center text-neutral-700 transition active:scale-90 cursor-pointer"
+            title={t.zoomIn}
+            id="btn-zoomin"
           >
-            {/* Checkerboard Pattern for Image Transparency */}
-            <div 
-              className="absolute inset-0 pointer-events-none opacity-[0.25]"
-              style={{
-                backgroundImage: `linear-gradient(45deg, #cbd5e1 25%, transparent 25%),
-                                  linear-gradient(-45deg, #cbd5e1 25%, transparent 25%),
-                                  linear-gradient(45deg, transparent 75%, #cbd5e1 75%),
-                                  linear-gradient(-45deg, transparent 75%, #cbd5e1 75%)`,
-                backgroundSize: "20px 20px",
-                backgroundPosition: "0 0, 0 10px, 10px -10px, -10px 0px"
-              }}
-              id="viewport-checkered-bg"
-            ></div>
-
-            {/* Stage Grid overlay - very subtle accent */}
-            <div className="absolute inset-0 pointer-events-none opacity-[0.03] border border-neutral-900" style={{ backgroundImage: "radial-gradient(#000 1px, transparent 1px)", backgroundSize: "16px 16px" }} id="stage-dot-grid"></div>
-
-
-
-            {/* IMAGE RENDER PIXEL STAGE */}
-            <div 
-              className="relative w-[340px] h-[340px] sm:w-[420px] sm:h-[420px] flex items-center justify-center transition-transform duration-75"
-              id="interactive-image-pivot"
-              style={{
-                transform: `translate(${transform.translateX}px, ${transform.translateY}px) scale(${transform.scale}) rotate(${transform.rotation}deg)`,
-                transformOrigin: "center center"
-              }}
-            >
-              <img
-                src={imageSrc}
-                alt="Viewer core native graphic"
-                referrerPolicy="no-referrer"
-                className="max-w-full max-h-full w-auto h-auto object-contain select-none pointer-events-none drop-shadow-md"
-                style={{
-                  transform: `scaleX(${transform.flipH ? -1 : 1}) scaleY(${transform.flipV ? -1 : 1})`,
-                  imageRendering: "crisp-edges"
-                }}
-                id="primary-canvas-image"
-              />
-            </div>
-          </div>
-
-          {/* FLOATING ACTION TOOLBAR BELOW VIEWPORT */}
-          <div className="bg-white border border-neutral-200/80 p-3 rounded-2xl flex flex-wrap gap-3 items-center justify-between shadow-sm" id="actions-panel-toolbar">
-            
-            {/* FINE-TUNING BUTTON GROUP */}
-            <div className="flex items-center gap-2" id="fine-tune-buttons">
-              <button
-                onClick={handleZoomIn}
-                className="w-10 h-10 bg-white hover:bg-neutral-50 border border-neutral-200 hover:border-neutral-900 rounded-xl flex items-center justify-center text-neutral-700 transition active:scale-90 cursor-pointer"
-                title={t.zoomIn}
-                id="btn-zoomin"
-              >
-                <ZoomIn size={18} />
-              </button>
-              <button
-                onClick={handleZoomOut}
-                className="w-10 h-10 bg-white hover:bg-neutral-50 border border-neutral-200 hover:border-neutral-900 rounded-xl flex items-center justify-center text-neutral-700 transition active:scale-90 cursor-pointer"
-                title={t.zoomOut}
-                id="btn-zoomout"
-              >
-                <ZoomOut size={18} />
-              </button>
-              <span className="w-[1px] h-6 bg-neutral-200 mx-1"></span>
-              <button
-                onClick={handleRotateCcw}
-                className="w-10 h-10 bg-white hover:bg-neutral-50 border border-neutral-200 hover:border-neutral-900 rounded-xl flex items-center justify-center text-neutral-700 transition active:scale-90 cursor-pointer"
-                title={t.rotateCcw}
-                id="btn-rotate-ccw"
-              >
-                <RotateCcw size={18} />
-              </button>
-              <button
-                onClick={handleRotateCw}
-                className="w-10 h-10 bg-white hover:bg-neutral-50 border border-neutral-200 hover:border-neutral-900 rounded-xl flex items-center justify-center text-neutral-700 transition active:scale-90 cursor-pointer"
-                title={t.rotateCw}
-                id="btn-rotate-cw"
-              >
-                <RotateCw size={18} />
-              </button>
-              <span className="w-[1px] h-6 bg-neutral-200 mx-1"></span>
-              <button
-                onClick={handleFlipH}
-                className="px-3 h-10 bg-white hover:bg-neutral-50 border border-neutral-200 hover:border-neutral-900 rounded-xl flex items-center gap-1.5 text-xs font-semibold text-neutral-700 transition active:scale-90 cursor-pointer"
-                title={t.flipH}
-                id="btn-fliph"
-              >
-                <span className="rotate-90 inline-block text-[13px]">⇄</span>
-                <span className="hidden sm:inline font-mono text-[10px]">H-FLIP</span>
-              </button>
-              <button
-                onClick={handleFlipV}
-                className="px-3 h-10 bg-white hover:bg-neutral-50 border border-neutral-200 hover:border-neutral-900 rounded-xl flex items-center gap-1.5 text-xs font-semibold text-neutral-700 transition active:scale-90 cursor-pointer"
-                title={t.flipV}
-                id="btn-flipv"
-              >
-                <span className="inline-block text-[13px]">⇅</span>
-                <span className="hidden sm:inline font-mono text-[10px]">V-FLIP</span>
-              </button>
-            </div>
-
-            {/* RESET BUTTON */}
-            <button
-              onClick={handleReset}
-              className="px-4 py-2.5 bg-neutral-900 hover:bg-neutral-800 text-white text-xs font-bold rounded-xl flex items-center gap-1.5 transition active:scale-95 cursor-pointer shadow-sm ml-auto sm:ml-0"
-              title={t.reset}
-              id="btn-reset-view"
-            >
-              <RefreshCw size={14} className="text-neutral-300" />
-              <span>{t.reset.toUpperCase()}</span>
-            </button>
-          </div>
-
+            <ZoomIn size={18} />
+          </button>
+          <button
+            onClick={handleZoomOut}
+            className="w-10 h-10 bg-white hover:bg-neutral-50 border border-neutral-200 hover:border-neutral-900 rounded-xl flex items-center justify-center text-neutral-700 transition active:scale-90 cursor-pointer"
+            title={t.zoomOut}
+            id="btn-zoomout"
+          >
+            <ZoomOut size={18} />
+          </button>
+          <span className="w-[1px] h-6 bg-neutral-200 mx-0.5"></span>
+          <button
+            onClick={handleRotateCcw}
+            className="w-10 h-10 bg-white hover:bg-neutral-50 border border-neutral-200 hover:border-neutral-900 rounded-xl flex items-center justify-center text-neutral-700 transition active:scale-90 cursor-pointer"
+            title={t.rotateCcw}
+            id="btn-rotate-ccw"
+          >
+            <RotateCcw size={18} />
+          </button>
+          <button
+            onClick={handleRotateCw}
+            className="w-10 h-10 bg-white hover:bg-neutral-50 border border-neutral-200 hover:border-neutral-900 rounded-xl flex items-center justify-center text-neutral-700 transition active:scale-90 cursor-pointer"
+            title={t.rotateCw}
+            id="btn-rotate-cw"
+          >
+            <RotateCw size={18} />
+          </button>
+          <span className="w-[1px] h-6 bg-neutral-200 mx-0.5"></span>
+          <button
+            onClick={handleFlipH}
+            className="px-2.5 h-10 bg-white hover:bg-neutral-50 border border-neutral-200 hover:border-neutral-900 rounded-xl flex items-center gap-1 text-xs font-semibold text-neutral-700 transition active:scale-90 cursor-pointer"
+            title={t.flipH}
+            id="btn-fliph"
+          >
+            <span className="rotate-90 inline-block text-[13px]">⇄</span>
+            <span className="hidden sm:inline font-mono text-[9px] uppercase">H-Flip</span>
+          </button>
+          <button
+            onClick={handleFlipV}
+            className="px-2.5 h-10 bg-white hover:bg-neutral-50 border border-neutral-200 hover:border-neutral-900 rounded-xl flex items-center gap-1 text-xs font-semibold text-neutral-700 transition active:scale-90 cursor-pointer"
+            title={t.flipV}
+            id="btn-flipv"
+          >
+            <span className="inline-block text-[13px]">⇅</span>
+            <span className="hidden sm:inline font-mono text-[9px] uppercase">V-Flip</span>
+          </button>
         </div>
 
-      </main>
+        {/* RESET BUTTON */}
+        <button
+          onClick={handleReset}
+          className="px-4 py-2.5 bg-neutral-900 hover:bg-neutral-800 text-white text-[11px] font-bold rounded-xl flex items-center gap-1.5 transition active:scale-95 cursor-pointer shadow-sm"
+          title={t.reset}
+          id="btn-reset-view"
+        >
+          <RefreshCw size={12} className="text-neutral-300" />
+          <span className="hidden xs:inline">CENTRALIZAR</span>
+        </button>
+      </div>
 
-      {/* FOOTER BAR */}
-      <footer className="border-t border-neutral-200 bg-white py-4 px-6 text-center" id="app-footer">
-        <div className="max-w-4xl mx-auto flex flex-col sm:flex-row justify-between items-center gap-3 text-[10px] text-neutral-400 font-mono uppercase tracking-wider" id="footer-inner-bar">
-          <div className="flex items-center gap-1.5" id="footer-branding">
-            <Compass size={12} className="text-neutral-400 animate-spin-slow" />
-            <span>MAPA PLANALTINA-GO © 2026</span>
-          </div>
-          <div className="flex items-center gap-4" id="footer-metadata">
-            <span>Designed with Mathematical Clarity</span>
-            <span className="text-neutral-200">|</span>
-            <span>Applet: 626251fe</span>
-          </div>
-        </div>
-      </footer>
+      {/* TINY FLOATING COPYRIGHT CORNER (BOTTOM-RIGHT) */}
+      <div className="absolute bottom-4 right-4 z-20 pointer-events-none hidden md:flex items-center gap-1.5 text-[9px] text-white/55 font-mono uppercase tracking-wider bg-black/40 backdrop-blur-sm px-2.5 py-1 rounded-md" id="footer-inner-bar">
+        <Compass size={10} className="animate-spin-slow" />
+        <span>MAPA PLANALTINA-GO</span>
+      </div>
 
     </div>
   );
