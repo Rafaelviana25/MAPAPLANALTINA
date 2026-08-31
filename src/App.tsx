@@ -26,6 +26,15 @@ interface TouchPoint {
 export default function App() {
   const [imageSrc] = useState<string>("/mapa-planaltina.png");
   
+  // Pre-decode and cache original high-resolution image in RAM once
+  useEffect(() => {
+    const img = new Image();
+    img.src = imageSrc;
+    if (img.decode) {
+      img.decode().catch(() => {});
+    }
+  }, [imageSrc]);
+  
   // Transform Coordinates State
   const [transform, setTransform] = useState<TransformState>({
     scale: 1,
@@ -392,12 +401,11 @@ export default function App() {
 
         {/* IMAGE RENDER PIXEL STAGE */}
         <div 
-          className="relative w-full h-full max-w-[95%] max-h-[95%] flex items-center justify-center"
+          className="relative w-full h-full flex items-center justify-center"
           id="interactive-image-pivot"
           style={{
-            transform: `translate(${transform.translateX}px, ${transform.translateY}px) scale(${transform.scale}) rotate(${transform.rotation}deg)`,
-            transformOrigin: "center center",
-            willChange: "transform"
+            transform: `translate3d(${transform.translateX}px, ${transform.translateY}px, 0) scale(${transform.scale}) rotate(${transform.rotation}deg)`,
+            transformOrigin: "center center"
           }}
         >
           <img
@@ -405,9 +413,11 @@ export default function App() {
             alt="Viewer core native graphic"
             referrerPolicy="no-referrer"
             loading="eager"
-            className="max-w-full max-h-full w-auto h-auto object-contain select-none pointer-events-none drop-shadow-2xl"
+            decoding="sync"
+            className="max-w-full max-h-full w-auto h-auto object-contain select-none pointer-events-none"
             style={{
-              transform: `scaleX(${transform.flipH ? -1 : 1}) scaleY(${transform.flipV ? -1 : 1})`
+              transform: `scaleX(${transform.flipH ? -1 : 1}) scaleY(${transform.flipV ? -1 : 1})`,
+              imageRendering: "auto"
             }}
             id="primary-canvas-image"
           />
