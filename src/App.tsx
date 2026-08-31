@@ -1,4 +1,4 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { 
   ZoomIn, 
   ZoomOut, 
@@ -140,109 +140,155 @@ export default function App() {
     }));
   };
 
-  // Touch Event Handlers for Mobile Gestures
-  const handleTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
-    const touches = Array.from(e.touches).map((t: any) => ({ x: t.clientX, y: t.clientY }));
-    
-    if (touches.length === 1) {
-      setIsDragging(true);
-      dragStartRef.current = {
-        x: touches[0].x,
-        y: touches[0].y,
-        translateX: transform.translateX,
-        translateY: transform.translateY,
-        rotation: transform.rotation
-      };
-    } else if (touches.length >= 2) {
-      setIsDragging(true);
-      const p1 = touches[0];
-      const p2 = touches[1];
+  // Synchronize state references to avoid listener re-binding and retain maximum responsiveness
+  const transformRef = useRef(transform);
+  const isDraggingRef = useRef(isDragging);
+
+  useEffect(() => {
+    transformRef.current = transform;
+  }, [transform]);
+
+  useEffect(() => {
+    isDraggingRef.current = isDragging;
+  }, [isDragging]);
+
+  // Non-passive Touch Engine for Butter-Smooth Mobile Pinch-to-Zoom
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const onTouchStartRaw = (e: TouchEvent) => {
+      // Completely block native browser scrolling, page bouncing, and system viewport zooming
+      if (e.cancelable) {
+        e.preventDefault();
+      }
       
-      const dist = Math.hypot(p2.x - p1.x, p2.y - p1.y);
-      const ang = Math.atan2(p2.y - p1.y, p2.x - p1.x) * 180 / Math.PI;
-      const center = {
-        x: (p1.x + p2.x) / 2,
-        y: (p1.y + p2.y) / 2
-      };
-
-      touchStartRef.current = {
-        touches,
-        translateX: transform.translateX,
-        translateY: transform.translateY,
-        scale: transform.scale,
-        rotation: transform.rotation,
-        distance: dist,
-        angle: ang,
-        center
-      };
-    }
-  };
-
-  const handleTouchMove = (e: React.TouchEvent<HTMLDivElement>) => {
-    const touches = Array.from(e.touches).map((t: any) => ({ x: t.clientX, y: t.clientY }));
-    
-    if (touches.length === 1 && isDragging) {
-      const dx = touches[0].x - dragStartRef.current.x;
-      const dy = touches[0].y - dragStartRef.current.y;
-      setTransform(prev => ({
-        ...prev,
-        translateX: dragStartRef.current.translateX + dx,
-        translateY: dragStartRef.current.translateY + dy
-      }));
-    } else if (touches.length >= 2 && isDragging) {
-      // Multi-touch interaction: Pinch Zoom + Rotate + Midpoint Pan (natively integrated!)
-      const p1 = touches[0];
-      const p2 = touches[1];
+      const touches = Array.from(e.touches).map(t => ({ x: t.clientX, y: t.clientY }));
+      const currentTransform = transformRef.current;
       
-      const currentDist = Math.hypot(p2.x - p1.x, p2.y - p1.y);
-      const currentAngle = Math.atan2(p2.y - p1.y, p2.x - p1.x) * 180 / Math.PI;
-      const currentCenter = {
-        x: (p1.x + p2.x) / 2,
-        y: (p1.y + p2.y) / 2
-      };
+      if (touches.length === 1) {
+        setIsDragging(true);
+        dragStartRef.current = {
+          x: touches[0].x,
+          y: touches[0].y,
+          translateX: currentTransform.translateX,
+          translateY: currentTransform.translateY,
+          rotation: currentTransform.rotation
+        };
+      } else if (touches.length >= 2) {
+        setIsDragging(true);
+        const p1 = touches[0];
+        const p2 = touches[1];
+        
+        const dist = Math.hypot(p2.x - p1.x, p2.y - p1.y);
+        const ang = Math.atan2(p2.y - p1.y, p2.x - p1.x) * (180 / Math.PI);
+        const center = {
+          x: (p1.x + p2.x) / 2,
+          y: (p1.y + p2.y) / 2
+        };
 
-      const start = touchStartRef.current;
-      if (!containerRef.current || !start) return;
+        touchStartRef.current = {
+          touches,
+          translateX: currentTransform.translateX,
+          translateY: currentTransform.translateY,
+          scale: currentTransform.scale,
+          rotation: currentTransform.rotation,
+          distance: dist,
+          angle: ang,
+          center
+        };
+      }
+    };
 
-      const rect = containerRef.current.getBoundingClientRect();
+    const onTouchMoveRaw = (e: TouchEvent) => {
+      if (e.cancelable) {
+        e.preventDefault();
+      }
       
-      const startCenterX = start.center.x - rect.left - rect.width / 2;
-      const startCenterY = start.center.y - rect.top - rect.height / 2;
+      const touches = Array.from(e.touches).map(t => ({ x: t.clientX, y: t.clientY }));
+      const currentTransform = transformRef.current;
       
-      const currentCenterX = currentCenter.x - rect.left - rect.width / 2;
-      const currentCenterY = currentCenter.y - rect.top - rect.height / 2;
-      
-      // Calculate Pinch Zoom
-      const scaleFactor = start.distance > 0 ? (currentDist / start.distance) : 1;
-      const newScale = Math.min(Math.max(start.scale * scaleFactor, 0.1), 15);
+      if (touches.length === 1 && isDraggingRef.current) {
+        const dx = touches[0].x - dragStartRef.current.x;
+        const dy = touches[0].y - dragStartRef.current.y;
+        setTransform(prev => ({
+          ...prev,
+          translateX: dragStartRef.current.translateX + dx,
+          translateY: dragStartRef.current.translateY + dy
+        }));
+      } else if (touches.length >= 2 && isDraggingRef.current) {
+        const p1 = touches[0];
+        const p2 = touches[1];
+        
+        const currentDist = Math.hypot(p2.x - p1.x, p2.y - p1.y);
+        const currentAngle = Math.atan2(p2.y - p1.y, p2.x - p1.x) * (180 / Math.PI);
+        const currentCenter = {
+          x: (p1.x + p2.x) / 2,
+          y: (p1.y + p2.y) / 2
+        };
 
-      // Calculate Rotation Spin
-      const angleDelta = currentAngle - start.angle;
-      const newRotation = (start.rotation + angleDelta) % 360;
+        const start = touchStartRef.current;
+        if (!start) return;
 
-      // Calculate Pan offset shifts
-      const dx = currentCenter.x - start.center.x;
-      const dy = currentCenter.y - start.center.y;
+        const rect = container.getBoundingClientRect();
+        
+        const startCenterX = start.center.x - rect.left - rect.width / 2;
+        const startCenterY = start.center.y - rect.top - rect.height / 2;
+        
+        const currentCenterX = currentCenter.x - rect.left - rect.width / 2;
+        const currentCenterY = currentCenter.y - rect.top - rect.height / 2;
+        
+        // Calculate dynamic scale factor
+        const scaleFactor = start.distance > 0 ? (currentDist / start.distance) : 1;
+        const newScale = Math.min(Math.max(start.scale * scaleFactor, 0.1), 15);
 
-      // Dynamic Zoom Centering focal-point Math
-      const scaleRatio = newScale / start.scale;
-      const newTranslateX = currentCenterX - (startCenterX - start.translateX) * scaleRatio;
-      const newTranslateY = currentCenterY - (startCenterY - start.translateY) * scaleRatio;
+        // Calculate dynamic rotation angle delta
+        const angleDelta = currentAngle - start.angle;
+        const newRotation = (start.rotation + angleDelta) % 360;
 
-      setTransform({
-        scale: newScale,
-        rotation: newRotation,
-        translateX: newTranslateX,
-        translateY: newTranslateY,
-        flipH: transform.flipH,
-        flipV: transform.flipV
-      });
-    }
-  };
+        // Rigid 2D Coordinate transformation matrix for combined rotation + zooming about touch center
+        const rad = (angleDelta * Math.PI) / 180;
+        const vx = startCenterX - start.translateX;
+        const vy = startCenterY - start.translateY;
 
-  const handleTouchEnd = () => {
-    setIsDragging(false);
-  };
+        const rX = vx * Math.cos(rad) - vy * Math.sin(rad);
+        const rY = vx * Math.sin(rad) + vy * Math.cos(rad);
+
+        const scaleRatio = newScale / start.scale;
+        const newTranslateX = currentCenterX - rX * scaleRatio;
+        const newTranslateY = currentCenterY - rY * scaleRatio;
+
+        setTransform({
+          scale: newScale,
+          rotation: newRotation,
+          translateX: newTranslateX,
+          translateY: newTranslateY,
+          flipH: currentTransform.flipH,
+          flipV: currentTransform.flipV
+        });
+      }
+    };
+
+    const onTouchEndRaw = (e: TouchEvent) => {
+      if (e.cancelable) {
+        e.preventDefault();
+      }
+      setIsDragging(false);
+    };
+
+    // Passive false options override the standard browser default gestures
+    container.addEventListener("touchstart", onTouchStartRaw, { passive: false });
+    container.addEventListener("touchmove", onTouchMoveRaw, { passive: false });
+    container.addEventListener("touchend", onTouchEndRaw, { passive: false });
+    container.addEventListener("touchcancel", onTouchEndRaw, { passive: false });
+
+    return () => {
+      container.removeEventListener("touchstart", onTouchStartRaw);
+      container.removeEventListener("touchmove", onTouchMoveRaw);
+      container.removeEventListener("touchend", onTouchEndRaw);
+      container.removeEventListener("touchcancel", onTouchEndRaw);
+    };
+  }, []);
 
   // Double tap/double click to reset back to center
   const handleDoubleClick = () => {
@@ -323,10 +369,6 @@ export default function App() {
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
         onWheel={handleWheel}
-        onTouchStart={handleTouchStart}
-        onTouchMove={handleTouchMove}
-        onTouchEnd={handleTouchEnd}
-        onTouchCancel={handleTouchEnd}
         onDoubleClick={handleDoubleClick}
         className="absolute inset-0 w-full h-full bg-neutral-950 select-none cursor-grab active:cursor-grabbing flex items-center justify-center touch-none overflow-hidden z-0"
         id="canvas-gesture-viewport"
@@ -350,21 +392,22 @@ export default function App() {
 
         {/* IMAGE RENDER PIXEL STAGE */}
         <div 
-          className="relative w-full h-full max-w-[95%] max-h-[95%] flex items-center justify-center transition-transform duration-75"
+          className="relative w-full h-full max-w-[95%] max-h-[95%] flex items-center justify-center"
           id="interactive-image-pivot"
           style={{
             transform: `translate(${transform.translateX}px, ${transform.translateY}px) scale(${transform.scale}) rotate(${transform.rotation}deg)`,
-            transformOrigin: "center center"
+            transformOrigin: "center center",
+            willChange: "transform"
           }}
         >
           <img
             src={imageSrc}
             alt="Viewer core native graphic"
             referrerPolicy="no-referrer"
+            loading="eager"
             className="max-w-full max-h-full w-auto h-auto object-contain select-none pointer-events-none drop-shadow-2xl"
             style={{
-              transform: `scaleX(${transform.flipH ? -1 : 1}) scaleY(${transform.flipV ? -1 : 1})`,
-              imageRendering: "crisp-edges"
+              transform: `scaleX(${transform.flipH ? -1 : 1}) scaleY(${transform.flipV ? -1 : 1})`
             }}
             id="primary-canvas-image"
           />
