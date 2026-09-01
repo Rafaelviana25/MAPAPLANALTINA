@@ -353,8 +353,8 @@ export default function App() {
       {/* FLOATING HEADER BAR */}
       <header className="absolute top-4 left-4 z-30 bg-white/95 backdrop-blur-md border border-neutral-200/80 shadow-lg rounded-2xl px-4 py-2.5 flex items-center gap-3 pointer-events-auto" id="app-header">
         <div className="flex items-center gap-3.5" id="brand-group">
-          <div className="w-8 h-8 bg-gradient-to-br from-slate-900 via-slate-800 to-indigo-950 border border-slate-700/80 rounded-xl flex items-center justify-center text-white shadow-sm font-black text-xs tracking-tighter" id="brand-logo">
-            <span className="bg-gradient-to-r from-sky-400 to-indigo-300 bg-clip-text text-transparent">PL</span>
+          <div className="w-8 h-8 bg-gradient-to-br from-slate-900 via-slate-800 to-indigo-950 border border-slate-700/80 rounded-xl flex items-center justify-center text-white shadow-sm overflow-hidden p-0.5" id="brand-logo">
+            <img src="/favicon.svg" alt="Planaltina" className="w-full h-full object-contain" />
           </div>
           <div>
             <h1 className="text-sm font-bold tracking-tight text-neutral-950 uppercase" id="brand-title">

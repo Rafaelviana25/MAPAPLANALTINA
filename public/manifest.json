@@ -1,6 +1,6 @@
 {
   "name": "MAPA PLANALTINA-GO",
-  "short_name": "PL Mapa",
+  "short_name": "Planaltina",
   "description": "Visualizador interativo do mapa de Planaltina-GO",
   "start_url": "/",
   "display": "standalone",
