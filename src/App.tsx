@@ -24,7 +24,7 @@ interface TouchPoint {
 }
 
 export default function App() {
-  const [imageSrc] = useState<string>("/mapa-planaltina.png");
+  const [imageSrc] = useState<string>(encodeURI("/MAPA PLANALTINA2.png"));
   
   // Pre-decode and cache original high-resolution image in RAM once
   useEffect(() => {
